@@ -64,6 +64,8 @@ button, a { -webkit-tap-highlight-color: transparent; cursor: pointer; }
 
 input, select, textarea {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   border: 1.5px solid var(--line);
   border-radius: var(--radius);
   padding: 11px 13px;
@@ -72,6 +74,13 @@ input, select, textarea {
   font-size: 15px;
   outline: none;
   transition: border-color .15s;
+  box-sizing: border-box;
+}
+
+input[type="date"],
+input[type="time"] {
+  appearance: none;
+  -webkit-appearance: none;
 }
 input:focus, select:focus, textarea:focus {
   border-color: var(--teal);
