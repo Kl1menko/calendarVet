@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head><title>Generate Icons</title></head>
+<body>
+<canvas id="c192" width="192" height="192"></canvas>
+<canvas id="c512" width="512" height="512"></canvas>
+<script>
+function draw(canvas) {
+  const s = canvas.width;
+  const ctx = canvas.getContext("2d");
+  const r = s * 0.22;
+
+  // Background
+  ctx.fillStyle = "#0d7377";
+  ctx.beginPath();
+  ctx.roundRect(0, 0, s, s, r);
+  ctx.fill();
+
+  // Text UV
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `bold ${s * 0.36}px -apple-system, SF Pro Display, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("UV", s / 2, s / 2);
+
+  const a = document.createElement("a");
+  a.download = `icon-${s}.png`;
+  a.href = canvas.toDataURL("image/png");
+  a.textContent = `Download icon-${s}.png`;
+  a.style.display = "block";
+  document.body.appendChild(a);
+}
+
+draw(document.getElementById("c192"));
+draw(document.getElementById("c512"));
+</script>
+</body>
+</html>

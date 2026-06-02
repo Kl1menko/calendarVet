@@ -1,3 +1,7 @@
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
 const SUPABASE_URL = "https://ptukvvbnbqbahwobitls.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0dWt2dmJuYnFiYWh3b2JpdGxzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1ODgzMzAsImV4cCI6MjA5MzE2NDMzMH0.P3Gwipqpc2poADf01mzcgl3p9V63LhdfCIi-JYIvfWQ";
 
