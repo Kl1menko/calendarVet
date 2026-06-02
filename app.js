@@ -82,19 +82,31 @@ async function dbSelect(table) {
   return { data, error: null };
 }
 
+async function dbSelectNotices() {
+  const token = await getAuthToken();
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/notices?select=*&order=created_at.desc`, {
+    headers: {
+      "apikey": SUPABASE_ANON,
+      "Authorization": `Bearer ${token || SUPABASE_ANON}`,
+    },
+  });
+  if (!res.ok) return { data: null, error: await res.json().catch(() => ({})) };
+  return { data: await res.json(), error: null };
+}
+
 // Doctor names mapped to emails (set these emails when creating users in Supabase Auth)
 const DOCTORS = [
-  "Головний лікар",
-  "Лікар Ірина",
-  "Лікар Андрій",
-  "Лікар Оксана",
-  "Лікар Марта",
+  "Остап (головний лікар)",
+  "Юрій (лікар)",
+  "Устим (асистент)",
+  "Іван (асистент)",
+  "Ірина (асистент)",
 ];
 
 // Timeline config
 const HOUR_START = 8;
 const HOUR_END = 20;
-const HOUR_HEIGHT = 80; // px per hour
+const HOUR_HEIGHT = window.innerWidth < 760 ? 56 : 72; // px per hour
 
 let selectedDate = new Date();
 selectedDate.setHours(0, 0, 0, 0);
@@ -348,12 +360,13 @@ function weekRangeLabel() {
 
 // ─── Doctor colors ────────────────────────────────────────────────────────────
 
+// Кольори для кожного лікаря: Остап, Юрій, Устим, Іван, Ірина
 const DOCTOR_COLORS = [
-  { bg: "#e8f4fd", border: "#246b86", text: "#1a5270" },
-  { bg: "#fde8e8", border: "#c63d24", text: "#922c1a" },
-  { bg: "#e8fdf0", border: "#1f5f4a", text: "#164535" },
-  { bg: "#fdf4e8", border: "#b87a1e", text: "#8a5a14" },
-  { bg: "#f4e8fd", border: "#7a3c9e", text: "#5a2c76" },
+  { bg: "#dbeafe", border: "#2563eb", text: "#1d4ed8" }, // Остап — синій
+  { bg: "#dcfce7", border: "#16a34a", text: "#15803d" }, // Юрій — зелений
+  { bg: "#fef3c7", border: "#d97706", text: "#b45309" }, // Устим — жовтий
+  { bg: "#fce7f3", border: "#db2777", text: "#be185d" }, // Іван — рожевий
+  { bg: "#ede9fe", border: "#7c3aed", text: "#6d28d9" }, // Ірина — фіолетовий
 ];
 
 function doctorColor(doctorName) {
@@ -516,9 +529,11 @@ function appointmentCard(item) {
   card.tabIndex = 0;
   const color = doctorColor(item.doctor);
   card.style.borderLeft = `4px solid ${color.border}`;
+  card.style.background = color.bg;
+  card.style.borderColor = color.border;
 
   card.innerHTML = `
-    <span class="time">${item.start}</span>
+    <span class="time" style="color:${color.border}">${item.start}</span>
     <span class="card-main">
       <strong>${item.pet} — ${item.service}</strong>
       <span class="meta">${item.doctor} · ${item.client}</span>
@@ -580,34 +595,95 @@ function uniqueClients() {
   return [...map.values()];
 }
 
+function isHeadDoctor() {
+  return currentUser?.email === "head@clinic.com";
+}
+
 function renderUtilityPage(tab) {
-  const pages = {
-    clients: {
-      title: "Клієнти",
-      html: uniqueClients().length
-        ? uniqueClients().map((c) => `
-            <article class="utility-card">
-              <h3>${c.client}</h3>
-              <p class="meta">${[...c.pets].join(", ")} · ${c.phone}</p>
-              <p class="meta">Останній запис: ${c.last.pet} — ${c.last.service}</p>
-              <div class="utility-actions">
-                <a class="mini-button" href="tel:${c.phone}">Подзвонити</a>
-              </div>
-            </article>`).join("")
-        : `<div class="empty-state">Клієнтів поки немає.</div>`,
-    },
-    alerts: {
-      title: "Сповіщення",
-      html: `
-        <article class="utility-card">
-          <h3>Завтра скорочений день</h3>
-          <p class="meta">Клініка працює до 15:00. Нові записи після 14:30 краще не створювати.</p>
-        </article>`,
-    },
-  };
-  const page = pages[tab];
-  els.dayTitle.textContent = page.title;
-  els.utilityPage.innerHTML = page.html;
+  if (tab === "clients") {
+    els.dayTitle.textContent = "Клієнти";
+    const list = uniqueClients();
+    els.utilityPage.innerHTML = list.length
+      ? list.map((c) => `
+          <article class="utility-card">
+            <h3>${c.client}</h3>
+            <p class="meta">${[...c.pets].join(", ")} · ${c.phone}</p>
+            <p class="meta">Останній запис: ${c.last.pet} — ${c.last.service}</p>
+            <div class="utility-actions">
+              <a class="mini-button" href="tel:${c.phone}">Подзвонити</a>
+            </div>
+          </article>`).join("")
+      : `<div class="empty-state">Клієнтів поки немає.</div>`;
+  } else if (tab === "alerts") {
+    renderAlertsPage();
+  }
+}
+
+async function renderAlertsPage() {
+  els.dayTitle.textContent = "Сповіщення";
+  els.utilityPage.innerHTML = `<div class="empty-state">Завантаження…</div>`;
+
+  const { data, error } = await dbSelectNotices();
+  if (error || !data) {
+    els.utilityPage.innerHTML = `<div class="empty-state">Не вдалось завантажити сповіщення.</div>`;
+    return;
+  }
+
+  const canEdit = isHeadDoctor();
+
+  els.utilityPage.innerHTML = "";
+
+  if (canEdit) {
+    const form = document.createElement("form");
+    form.className = "notice-form";
+    form.innerHTML = `
+      <textarea name="text" rows="3" placeholder="Текст сповіщення для всіх лікарів…" required></textarea>
+      <button class="button save" type="submit">Додати сповіщення</button>
+    `;
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = form.elements.text.value.trim();
+      if (!text) return;
+      const btn = form.querySelector("button");
+      btn.textContent = "Зберігаю…";
+      btn.disabled = true;
+      await dbInsert("notices", { text, created_by: currentUser?.id });
+      form.reset();
+      renderAlertsPage();
+    });
+    els.utilityPage.append(form);
+  }
+
+  if (!data.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Сповіщень поки немає.";
+    els.utilityPage.append(empty);
+    return;
+  }
+
+  data.forEach((notice) => {
+    const card = document.createElement("article");
+    card.className = "utility-card notice-card";
+    const date = new Date(notice.created_at).toLocaleDateString("uk-UA", {
+      day: "numeric", month: "long", hour: "2-digit", minute: "2-digit"
+    });
+    card.innerHTML = `
+      <p class="notice-text">${notice.text}</p>
+      <div class="notice-footer">
+        <span class="meta">${date}</span>
+        ${canEdit ? `<button class="notice-delete" data-id="${notice.id}" type="button">Видалити</button>` : ""}
+      </div>
+    `;
+    if (canEdit) {
+      card.querySelector(".notice-delete").addEventListener("click", async (e) => {
+        if (!confirm("Видалити це сповіщення?")) return;
+        await dbDelete("notices", e.target.dataset.id);
+        renderAlertsPage();
+      });
+    }
+    els.utilityPage.append(card);
+  });
 }
 
 // ─── Tab switching ────────────────────────────────────────────────────────────
@@ -833,6 +909,7 @@ document.getElementById("todayButton").addEventListener("click", () => {
   render();
 });
 document.getElementById("newAppointment").addEventListener("click", () => openForm());
+document.getElementById("deskNewBtn").addEventListener("click", () => openForm());
 document.querySelectorAll("[data-tab]").forEach((b) =>
   b.addEventListener("click", () => switchTab(b.dataset.tab))
 );
