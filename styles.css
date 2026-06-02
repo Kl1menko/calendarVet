@@ -71,7 +71,7 @@ input, select, textarea {
   padding: 11px 13px;
   color: var(--ink);
   background: var(--panel);
-  font-size: 15px;
+  font-size: 16px; /* мінімум 16px щоб iOS не зумував */
   outline: none;
   transition: border-color .15s;
   box-sizing: border-box;

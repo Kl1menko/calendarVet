@@ -521,12 +521,12 @@ function renderWeekList() {
     els.weekList.innerHTML = `<div class="empty-state">На цей тиждень записів немає.</div>`;
     return;
   }
-  list.forEach((item) => els.weekList.append(appointmentCard(item)));
+  list.forEach((item) => els.weekList.append(appointmentCard(item, true)));
 }
 
 // ─── Appointment card ─────────────────────────────────────────────────────────
 
-function appointmentCard(item) {
+function appointmentCard(item, showDate = false) {
   const card = document.createElement("article");
   card.className = "appointment-card";
   card.role = "button";
@@ -536,12 +536,16 @@ function appointmentCard(item) {
   card.style.background = color.bg;
   card.style.borderColor = color.border;
 
+  const dateLabel = showDate || item.date !== isoDate(selectedDate)
+    ? `<span class="meta card-date">${formatShortDate(new Date(item.date + "T12:00:00"))}</span>`
+    : "";
+
   card.innerHTML = `
     <span class="time" style="color:${color.border}">${item.start}</span>
     <span class="card-main">
       <strong>${item.pet} — ${item.service}</strong>
       <span class="meta">${item.doctor} · ${item.client}</span>
-      ${item.date !== isoDate(selectedDate) ? `<span class="meta card-date">${formatShortDate(new Date(item.date + "T12:00:00"))}</span>` : ""}
+      ${dateLabel}
     </span>
     <span class="card-actions">
       <a class="call-link" href="tel:${item.phone}" data-call>Подзвонити</a>
