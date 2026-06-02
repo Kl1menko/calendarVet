@@ -301,6 +301,36 @@ h2 {
   line-height: 1.2;
 }
 
+/* ─── PULSE DOCTOR PICKER (mobile only) ─────────────────────────────────────── */
+.pulse-doctor-picker {
+  position: relative;
+}
+
+.pulse-doctor-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  margin-bottom: 3px;
+}
+
+.pulse-doctor-value {
+  display: block;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--teal);
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 16px;
+}
+
+/* Ховаємо doctor-filter на мобільному */
+#doctorFilter { display: none !important; }
+
 /* ─── DAY CONTROLS ───────────────────────────────────────────────────────────── */
 .day-controls {
   display: grid;
@@ -1094,6 +1124,8 @@ label {
 
   .bottom-nav, .fab { display: none; }
   .mobile-only { display: none !important; }
+  .pulse-doctor-picker { display: none; }
+  #doctorFilter { display: grid !important; }
 
   /* Topbar */
   .topbar {

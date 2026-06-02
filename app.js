@@ -147,6 +147,8 @@ const els = {
   nextVisit: document.getElementById("nextVisit"),
   doctorFilter: document.getElementById("doctorFilter"),
   doctorFilterValue: document.getElementById("doctorFilterValue"),
+  pulseDoctorPicker: document.getElementById("pulseDoctorPicker"),
+  pulseDoctorValue: document.getElementById("pulseDoctorValue"),
   overlay: document.getElementById("overlay"),
   detailsSheet: document.getElementById("detailsSheet"),
   detailsContent: document.getElementById("detailsContent"),
@@ -564,9 +566,22 @@ function appointmentCard(item, showDate = false) {
 
 function renderPulse() {
   const todays = appointments.filter((a) => a.date === isoDate(selectedDate));
-  const visible = visibleAppointments();
   els.todayTotal.textContent = String(todays.length);
-  els.nextVisit.textContent = visible.find((a) => a.status !== "Завершено")?.start || "--:--";
+
+  // Наступний запис від поточного часу
+  const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const todayIso = isoDate(now);
+  const next = appointments
+    .filter((a) => a.date === todayIso && a.status !== "Завершено")
+    .filter((a) => minutesFromTime(a.start) > nowMins)
+    .sort((a, b) => a.start.localeCompare(b.start))[0];
+  els.pulseDoctorValue.textContent = next ? next.start : "—";
+
+  const short = selectedDoctor === "Всі лікарі"
+    ? "Всі"
+    : selectedDoctor.split(" ")[0];
+  if (els.doctorFilterValue) els.doctorFilterValue.textContent = selectedDoctor;
 }
 
 // ─── Main render ──────────────────────────────────────────────────────────────
@@ -885,6 +900,7 @@ els.doctorFilter.addEventListener("click", () => {
   renderDoctorOptions();
   openSheet(els.doctorSheet);
 });
+
 
 // ─── Search ───────────────────────────────────────────────────────────────────
 
