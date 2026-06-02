@@ -3,18 +3,46 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>UltraVet</title>
+    <title>CalendarVet</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div class="app-shell">
+
+    <!-- LOADING SPLASH -->
+    <div class="splash" id="splash" hidden>
+      <div class="splash-logo">UV</div>
+    </div>
+
+    <!-- LOGIN SCREEN -->
+    <div class="login-screen" id="loginScreen" hidden>
+      <div class="login-card">
+        <div class="login-logo">UV</div>
+        <h1 class="login-title">UltraVet</h1>
+        <p class="login-sub">Ветеринарна клініка</p>
+        <form id="loginForm">
+          <label>Email
+            <input name="email" type="email" placeholder="doctor@clinic.com" autocomplete="email" required />
+          </label>
+          <label>Пароль
+            <input name="password" type="password" placeholder="••••••••" autocomplete="current-password" required />
+          </label>
+          <div id="loginError" class="login-error" hidden></div>
+          <button class="button save login-btn" type="submit" id="loginBtn">Увійти</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div class="app-shell" id="appShell" hidden>
       <aside class="desktop-rail" aria-label="Основна навігація">
-        <div class="brand-mark">CV</div>
+        <div class="brand-mark">UltraVet</div>
         <nav>
           <button class="active" type="button" data-tab="calendar">Календар</button>
           <button type="button" data-tab="clients">Клієнти</button>
           <button type="button" data-tab="alerts">Сповіщення</button>
         </nav>
+        <div class="rail-user" id="railUser"></div>
+        <button class="rail-logout" id="logoutBtn" type="button">Вийти</button>
       </aside>
 
       <main class="screen" id="calendar">
@@ -23,14 +51,12 @@
             <p class="eyebrow">UltraVet</p>
             <h1 id="dayTitle">Сьогодні</h1>
           </div>
-          <button class="icon-button" id="openSearch" aria-label="Пошук">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z"/></svg>
-          </button>
+          <div class="topbar-actions">
+            <button class="icon-button mobile-only" id="mobileLogoutBtn" aria-label="Вийти">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+            </button>
+          </div>
         </header>
-
-        <section class="notice calendar-only" aria-label="Важливе сповіщення">
-          <strong>Важливо:</strong> завтра клініка працює до 15:00.
-        </section>
 
         <section class="clinic-pulse calendar-only" aria-label="Стан дня">
           <article>
@@ -66,12 +92,24 @@
           <button data-view="week">Тиждень</button>
         </section>
 
-        <section class="schedule-panel calendar-only" aria-live="polite">
+        <!-- DAY TIMELINE VIEW -->
+        <section class="timeline-panel calendar-only" id="timelinePanel" aria-live="polite">
           <div class="schedule-heading">
             <h2 id="scheduleDate">Сьогодні</h2>
             <span id="appointmentCount">0 записів</span>
           </div>
-          <div class="appointment-list" id="appointmentList"></div>
+          <div class="timeline-wrap" id="timelineWrap">
+            <div class="timeline-grid" id="timelineGrid"></div>
+          </div>
+        </section>
+
+        <!-- WEEK LIST VIEW -->
+        <section class="schedule-panel calendar-only" id="weekPanel" hidden aria-live="polite">
+          <div class="schedule-heading">
+            <h2 id="weekDate"></h2>
+            <span id="weekCount"></span>
+          </div>
+          <div class="appointment-list" id="weekList"></div>
         </section>
 
         <section class="utility-page" id="utilityPage" hidden></section>
@@ -90,7 +128,6 @@
         </button>
         <button type="button" data-tab="alerts" aria-label="Сповіщення">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          <span class="nav-badge" aria-label="2 нові сповіщення">2</span>
           Сповіщення
         </button>
       </nav>
@@ -98,11 +135,13 @@
 
     <div class="overlay" id="overlay" hidden></div>
 
+    <!-- DETAILS SHEET -->
     <section class="sheet" id="detailsSheet" aria-modal="true" role="dialog" aria-labelledby="detailsTitle" hidden>
       <div class="sheet-handle"></div>
       <div id="detailsContent"></div>
     </section>
 
+    <!-- FORM SHEET -->
     <section class="sheet tall" id="formSheet" aria-modal="true" role="dialog" aria-labelledby="formTitle" hidden>
       <div class="sheet-handle"></div>
       <form id="appointmentForm">
@@ -110,10 +149,10 @@
         <label>Дата <input name="date" type="date" required /></label>
         <label>Час початку <input name="start" type="time" required /></label>
         <label>
-          Скільки часу забити
+          Тривалість
           <select name="duration" required>
             <option value="15">15 хв</option>
-            <option value="30">30 хв</option>
+            <option value="30" selected>30 хв</option>
             <option value="45">45 хв</option>
             <option value="60">1 година</option>
             <option value="90">1 год 30 хв</option>
@@ -123,6 +162,7 @@
         <label>Клієнт <input name="client" type="text" placeholder="Олена" required /></label>
         <label>Телефон <input name="phone" type="tel" placeholder="+380671112233" required /></label>
         <label>Тварина <input name="pet" type="text" placeholder="Рекс" required /></label>
+        <label>Вид/порода <input name="animal" type="text" placeholder="собака, лабрадор" /></label>
         <label>Послуга <input name="service" type="text" placeholder="Вакцинація" required /></label>
         <label>
           Відповідальний лікар
@@ -140,11 +180,12 @@
         <label>Коментар <textarea name="comment" rows="3" placeholder="Коротка примітка"></textarea></label>
         <div class="sticky-actions">
           <button class="button ghost" type="button" data-close>Закрити</button>
-          <button class="button save" type="submit">Зберегти запис</button>
+          <button class="button save" type="submit" id="formSaveBtn">Зберегти</button>
         </div>
       </form>
     </section>
 
+    <!-- SEARCH SHEET -->
     <section class="sheet tall" id="searchSheet" aria-modal="true" role="dialog" aria-labelledby="searchTitle" hidden>
       <div class="sheet-handle"></div>
       <h2 id="searchTitle">Пошук</h2>
@@ -152,12 +193,14 @@
       <div class="appointment-list compact" id="searchResults"></div>
     </section>
 
+    <!-- DOCTOR FILTER SHEET -->
     <section class="sheet" id="doctorSheet" aria-modal="true" role="dialog" aria-labelledby="doctorTitle" hidden>
       <div class="sheet-handle"></div>
       <h2 id="doctorTitle">Фільтр по лікарю</h2>
       <div class="doctor-options" id="doctorOptions"></div>
     </section>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
