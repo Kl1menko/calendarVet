@@ -110,7 +110,7 @@ const DOCTORS = [
 // Timeline config
 const HOUR_START = 8;
 const HOUR_END = 20;
-const HOUR_HEIGHT = window.innerWidth < 760 ? 56 : 72; // px per hour
+const HOUR_HEIGHT = window.innerWidth < 760 ? 44 : 72; // px per hour
 
 let selectedDate = new Date();
 selectedDate.setHours(0, 0, 0, 0);
@@ -144,7 +144,6 @@ const els = {
   weekCount: document.getElementById("weekCount"),
   weekList: document.getElementById("weekList"),
   todayTotal: document.getElementById("todayTotal"),
-  nextVisit: document.getElementById("nextVisit"),
   doctorFilter: document.getElementById("doctorFilter"),
   doctorFilterValue: document.getElementById("doctorFilterValue"),
   pulseDoctorPicker: document.getElementById("pulseDoctorPicker"),
@@ -157,7 +156,11 @@ const els = {
   doctorSheet: document.getElementById("doctorSheet"),
   doctorOptions: document.getElementById("doctorOptions"),
   searchInput: document.getElementById("searchInput"),
+  searchClear: document.getElementById("searchClear"),
   searchResults: document.getElementById("searchResults"),
+  searchBtn: document.getElementById("searchBtn"),
+  doctorFilterBtn: document.getElementById("doctorFilterBtn"),
+  doctorFilterDot: document.getElementById("doctorFilterDot"),
   utilityPage: document.getElementById("utilityPage"),
   form: document.getElementById("appointmentForm"),
   formSaveBtn: document.getElementById("formSaveBtn"),
@@ -226,6 +229,7 @@ db.auth.onAuthStateChange(async (event, session) => {
     currentUser = session.user;
     showApp();
     await loadAppointments();
+    loadAndCountNotices();
     subscribeRealtime();
   } else if (event === "SIGNED_OUT") {
     currentUser = null;
@@ -464,15 +468,7 @@ function renderTimeline() {
     grid.append(block);
   });
 
-  // Click on empty slot to create appointment at that time
-  grid.addEventListener("click", (e) => {
-    if (e.target.closest(".tl-event")) return;
-    const rect = grid.getBoundingClientRect();
-    const y = e.clientY - rect.top;
-    const mins = HOUR_START * 60 + Math.round(y / HOUR_HEIGHT * 60 / 15) * 15;
-    const clampedMins = Math.min(Math.max(mins, HOUR_START * 60), (HOUR_END - 1) * 60);
-    openForm({ clickedTime: timeFromMinutes(clampedMins) });
-  });
+  // click на порожній слот — обробляється одним делегованим listener нижче
 
   // Scroll to first appointment or 8am
   requestAnimationFrame(() => {
@@ -487,21 +483,32 @@ function renderTimeline() {
 
 function assignColumns(list) {
   const result = list.map(() => ({ col: 0, totalCols: 1 }));
+  // Для кожного запису знаходимо зайняті колонки серед вже розставлених
+  // сусідів і беремо першу вільну — так колонки не дублюються
   for (let i = 0; i < list.length; i++) {
     const aStart = minutesFromTime(list[i].start);
-    const aEnd = minutesFromTime(list[i].end);
-    const overlapping = [i];
-    for (let j = 0; j < list.length; j++) {
-      if (i === j) continue;
-      const bStart = minutesFromTime(list[j].start);
-      const bEnd = minutesFromTime(list[j].end);
-      if (aStart < bEnd && aEnd > bStart) overlapping.push(j);
-    }
-    const maxCols = overlapping.length;
-    overlapping.forEach((idx, pos) => {
-      result[idx].col = pos;
-      result[idx].totalCols = maxCols;
-    });
+    const aEnd   = minutesFromTime(list[i].end);
+
+    // Всі записи що перетинаються з поточним
+    const overlaps = list.reduce((acc, b, j) => {
+      if (i === j) return acc;
+      const bStart = minutesFromTime(b.start);
+      const bEnd   = minutesFromTime(b.end);
+      if (aStart < bEnd && aEnd > bStart) acc.push(j);
+      return acc;
+    }, []);
+
+    // Яку колонку вже зайняли сусіди що стоять перед нами
+    const usedCols = new Set(overlaps.filter(j => j < i).map(j => result[j].col));
+    let col = 0;
+    while (usedCols.has(col)) col++;
+    result[i].col = col;
+
+    // totalCols = максимальна кількість колонок в групі перетинів
+    const group = [i, ...overlaps];
+    const maxCol = Math.max(...group.map(j => result[j].col));
+    const totalCols = maxCol + 1;
+    group.forEach(j => { result[j].totalCols = Math.max(result[j].totalCols, totalCols); });
   }
   return result;
 }
@@ -578,9 +585,6 @@ function renderPulse() {
     .sort((a, b) => a.start.localeCompare(b.start))[0];
   els.pulseDoctorValue.textContent = next ? next.start : "—";
 
-  const short = selectedDoctor === "Всі лікарі"
-    ? "Всі"
-    : selectedDoctor.split(" ")[0];
   if (els.doctorFilterValue) els.doctorFilterValue.textContent = selectedDoctor;
 }
 
@@ -626,57 +630,118 @@ function renderUtilityPage(tab) {
   if (tab === "clients") {
     els.dayTitle.textContent = "Клієнти";
     const list = uniqueClients();
-    els.utilityPage.innerHTML = list.length
-      ? list.map((c) => `
-          <article class="utility-card">
-            <h3>${c.client}</h3>
-            <p class="meta">${[...c.pets].join(", ")} · ${c.phone}</p>
-            <p class="meta">Останній запис: ${c.last.pet} — ${c.last.service}</p>
-            <div class="utility-actions">
-              <a class="mini-button" href="tel:${c.phone}">Подзвонити</a>
-            </div>
-          </article>`).join("")
-      : `<div class="empty-state">Клієнтів поки немає.</div>`;
+    els.utilityPage.innerHTML = "";
+
+    if (!list.length) {
+      els.utilityPage.innerHTML = `<div class="empty-state">Клієнтів поки немає.</div>`;
+      return;
+    }
+
+    list.forEach((c) => {
+      const pets = [...c.pets];
+      const initials = c.client.trim().split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+      const card = document.createElement("article");
+      card.className = "client-card";
+      card.innerHTML = `
+        <div class="client-avatar">${initials}</div>
+        <div class="client-info">
+          <strong class="client-name">${c.client}</strong>
+          <span class="client-pets">${pets.join(", ")}</span>
+          <span class="client-last">${c.last.service} · ${formatShortDate(new Date(c.last.date + "T12:00:00"))}</span>
+        </div>
+        <a class="client-call" href="tel:${c.phone}" aria-label="Подзвонити ${c.client}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.91a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16z"/></svg>
+        </a>
+      `;
+      els.utilityPage.append(card);
+    });
   } else if (tab === "alerts") {
     renderAlertsPage();
   }
 }
 
+function getLastSeenTs() {
+  return localStorage.getItem("notices_last_seen") || "1970-01-01T00:00:00Z";
+}
+
+function markNoticesSeen() {
+  localStorage.setItem("notices_last_seen", new Date().toISOString());
+  updateAlertsBadge(0);
+}
+
+function updateAlertsBadge(count) {
+  const badge = document.getElementById("alertsBadge");
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count > 9 ? "9+" : String(count);
+    badge.hidden = false;
+  } else {
+    badge.hidden = true;
+  }
+}
+
+async function loadAndCountNotices() {
+  const { data } = await dbSelectNotices();
+  if (!data) return;
+  const lastSeen = getLastSeenTs();
+  const unseen = data.filter((n) => n.created_at > lastSeen).length;
+  updateAlertsBadge(unseen);
+}
+
 async function renderAlertsPage() {
   els.dayTitle.textContent = "Сповіщення";
   els.utilityPage.innerHTML = `<div class="empty-state">Завантаження…</div>`;
+  markNoticesSeen();
 
   const { data, error } = await dbSelectNotices();
   if (error || !data) {
-    els.utilityPage.innerHTML = `<div class="empty-state">Не вдалось завантажити сповіщення.</div>`;
+    console.error("notices error:", error);
+    els.utilityPage.innerHTML = `<div class="empty-state">Не вдалось завантажити сповіщення.<br><small style="opacity:.6">${error?.message || error?.code || ""}</small></div>`;
     return;
   }
 
   const canEdit = isHeadDoctor();
-
   els.utilityPage.innerHTML = "";
 
+  // ── Форма для головного лікаря ──
   if (canEdit) {
     const form = document.createElement("form");
     form.className = "notice-form";
     form.innerHTML = `
-      <textarea name="text" rows="3" placeholder="Текст сповіщення для всіх лікарів…" required></textarea>
-      <button class="button save" type="submit">Додати сповіщення</button>
+      <div class="notice-form-header">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        Нове сповіщення
+      </div>
+      <textarea name="text" rows="3" placeholder="Введіть текст для всіх лікарів…" required></textarea>
+      <div class="notice-form-actions">
+        <span class="notice-form-hint">Побачать усі при наступному відкритті</span>
+        <button class="button save notice-submit" type="submit">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2 11 13M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+          Опублікувати
+        </button>
+      </div>
     `;
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const text = form.elements.text.value.trim();
       if (!text) return;
-      const btn = form.querySelector("button");
-      btn.textContent = "Зберігаю…";
+      const btn = form.querySelector(".notice-submit");
       btn.disabled = true;
-      await dbInsert("notices", { text, created_by: currentUser?.id });
+      btn.innerHTML = `<span class="notice-spinner"></span> Публікую…`;
+      const { error } = await dbInsert("notices", { text, created_by: currentUser?.id });
+      if (error) {
+        btn.disabled = false;
+        btn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M22 2 11 13M22 2 15 22l-4-9-9-4 20-7z"/></svg> Опублікувати`;
+        return;
+      }
       form.reset();
+      markNoticesSeen();
       renderAlertsPage();
     });
     els.utilityPage.append(form);
   }
 
+  // ── Список сповіщень ──
   if (!data.length) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
@@ -687,22 +752,32 @@ async function renderAlertsPage() {
 
   data.forEach((notice) => {
     const card = document.createElement("article");
-    card.className = "utility-card notice-card";
+    card.className = "notice-card";
     const date = new Date(notice.created_at).toLocaleDateString("uk-UA", {
       day: "numeric", month: "long", hour: "2-digit", minute: "2-digit"
     });
     card.innerHTML = `
-      <p class="notice-text">${notice.text}</p>
-      <div class="notice-footer">
-        <span class="meta">${date}</span>
-        ${canEdit ? `<button class="notice-delete" data-id="${notice.id}" type="button">Видалити</button>` : ""}
+      <div class="notice-icon">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      </div>
+      <div class="notice-body">
+        <p class="notice-text"></p>
+        <div class="notice-footer">
+          <span class="notice-date">${date}</span>
+          ${canEdit ? `<button class="notice-delete" data-id="${notice.id}" type="button">Видалити</button>` : ""}
+        </div>
       </div>
     `;
+    card.querySelector(".notice-text").textContent = notice.text;
     if (canEdit) {
-      card.querySelector(".notice-delete").addEventListener("click", async (e) => {
-        if (!confirm("Видалити це сповіщення?")) return;
-        await dbDelete("notices", e.target.dataset.id);
-        renderAlertsPage();
+      card.querySelector(".notice-delete").addEventListener("click", async (btn) => {
+        const id = btn.target.dataset.id;
+        btn.target.textContent = "…";
+        btn.target.disabled = true;
+        await dbDelete("notices", id);
+        card.style.transition = "opacity .2s";
+        card.style.opacity = "0";
+        setTimeout(() => renderAlertsPage(), 200);
       });
     }
     els.utilityPage.append(card);
@@ -718,6 +793,8 @@ function switchTab(tab) {
   );
   document.querySelectorAll(".calendar-only").forEach((s) => (s.hidden = tab !== "calendar"));
   els.utilityPage.hidden = tab === "calendar";
+  const fab = document.getElementById("newAppointment");
+  if (fab) fab.hidden = tab !== "calendar";
   if (tab === "calendar") {
     render();
   } else {
@@ -726,16 +803,61 @@ function switchTab(tab) {
   history.replaceState(null, "", `#${tab}`);
 }
 
+// ─── Keyboard / viewport handling (Safari iOS) ───────────────────────────────
+
+function setupViewportHandler() {
+  if (!window.visualViewport) return;
+
+  const bottomNav = document.querySelector(".bottom-nav");
+  let rafId = null;
+
+  function onViewportChange() {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      const vv = window.visualViewport;
+      const offsetBottom = window.innerHeight - vv.height - vv.offsetTop;
+      const keyboardOpen = offsetBottom > 60;
+
+      // Ховаємо bottom nav коли клавіатура відкрита
+      if (bottomNav) bottomNav.classList.toggle("keyboard-open", keyboardOpen);
+
+      // Зсуваємо тільки bottom sheets (не модальні — вони центровані через CSS transform)
+      const shift = keyboardOpen ? offsetBottom : 0;
+      document.querySelectorAll(".sheet:not([hidden]):not(.modal)").forEach((sheet) => {
+        sheet.style.transform = shift > 0 ? `translateY(-${shift}px)` : "";
+        sheet.style.transition = "transform 0.2s ease";
+      });
+    });
+  }
+
+  window.visualViewport.addEventListener("resize", onViewportChange, { passive: true });
+  window.visualViewport.addEventListener("scroll", onViewportChange, { passive: true });
+}
+
+setupViewportHandler();
+
 // ─── Sheets ───────────────────────────────────────────────────────────────────
 
 function openSheet(sheet) {
   els.overlay.hidden = false;
   sheet.hidden = false;
+  if (!sheet.classList.contains("modal")) {
+    sheet.style.transform = "";
+  }
 }
 
 function closeSheets() {
   els.overlay.hidden = true;
-  document.querySelectorAll(".sheet").forEach((s) => (s.hidden = true));
+  document.querySelectorAll(".sheet").forEach((s) => {
+    s.hidden = true;
+    if (!s.classList.contains("modal")) {
+      s.style.transform = "";
+      s.style.transition = "";
+    }
+  });
+  els.searchInput.value = "";
+  els.searchClear.hidden = true;
+  els.searchResults.innerHTML = "";
 }
 
 // ─── Details sheet ────────────────────────────────────────────────────────────
@@ -880,6 +1002,12 @@ function showFormError(msg) {
 
 // ─── Doctor filter sheet ──────────────────────────────────────────────────────
 
+function updateDoctorFilterDot() {
+  const active = selectedDoctor !== "Всі лікарі";
+  if (els.doctorFilterDot) els.doctorFilterDot.hidden = !active;
+  if (els.doctorFilterBtn) els.doctorFilterBtn.classList.toggle("icon-button--active", active);
+}
+
 function renderDoctorOptions() {
   els.doctorOptions.innerHTML = "";
   ["Всі лікарі", ...DOCTORS].forEach((doc) => {
@@ -889,6 +1017,7 @@ function renderDoctorOptions() {
     if (doc === selectedDoctor) btn.classList.add("active");
     btn.addEventListener("click", () => {
       selectedDoctor = doc;
+      updateDoctorFilterDot();
       closeSheets();
       render();
     });
@@ -900,22 +1029,38 @@ els.doctorFilter.addEventListener("click", () => {
   renderDoctorOptions();
   openSheet(els.doctorSheet);
 });
+els.doctorFilterBtn.addEventListener("click", () => {
+  renderDoctorOptions();
+  openSheet(els.doctorSheet);
+});
 
 
 // ─── Search ───────────────────────────────────────────────────────────────────
 
 function renderSearch() {
   const q = els.searchInput.value.trim().toLowerCase();
-  const result = appointments.filter((a) => {
-    if (!q) return false;
-    return [a.client, a.phone, a.pet, a.service, a.doctor].join(" ").toLowerCase().includes(q);
-  });
+  els.searchClear.hidden = !q;
+
   els.searchResults.innerHTML = "";
-  if (!result.length && q) {
+
+  if (!q) {
+    els.searchResults.innerHTML = `<p class="search-hint">Введіть ім'я клієнта, кличку або номер телефону</p>`;
+    return;
+  }
+
+  const result = appointments.filter((a) =>
+    [a.client, a.pet, a.phone].join(" ").toLowerCase().includes(q)
+  );
+
+  if (!result.length) {
     els.searchResults.innerHTML = `<div class="empty-state">Нічого не знайдено.</div>`;
     return;
   }
-  result.forEach((item) => els.searchResults.append(appointmentCard(item)));
+
+  const list = document.createElement("div");
+  list.className = "appointment-list";
+  result.forEach((item) => list.append(appointmentCard(item, true)));
+  els.searchResults.append(list);
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
@@ -924,6 +1069,16 @@ function moveDay(delta) {
   selectedDate.setDate(selectedDate.getDate() + delta);
   render();
 }
+
+// Делегований click на timeline — один listener назавжди
+els.timelineWrap.addEventListener("click", (e) => {
+  if (e.target.closest(".tl-event")) return;
+  const rect = els.timelineGrid.getBoundingClientRect();
+  const y = e.clientY - rect.top;
+  const mins = HOUR_START * 60 + Math.round(y / HOUR_HEIGHT * 60 / 15) * 15;
+  const clampedMins = Math.min(Math.max(mins, HOUR_START * 60), (HOUR_END - 1) * 60);
+  openForm({ clickedTime: timeFromMinutes(clampedMins) });
+});
 
 document.getElementById("prevDay").addEventListener("click", () => moveDay(-1));
 document.getElementById("nextDay").addEventListener("click", () => moveDay(1));
@@ -938,7 +1093,17 @@ document.querySelectorAll("[data-tab]").forEach((b) =>
   b.addEventListener("click", () => switchTab(b.dataset.tab))
 );
 els.overlay.addEventListener("click", closeSheets);
+els.searchBtn.addEventListener("click", () => {
+  openSheet(els.searchSheet);
+  requestAnimationFrame(() => els.searchInput.focus());
+  renderSearch();
+});
 els.searchInput.addEventListener("input", renderSearch);
+els.searchClear.addEventListener("click", () => {
+  els.searchInput.value = "";
+  els.searchInput.focus();
+  renderSearch();
+});
 document.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", closeSheets));
 document.querySelectorAll(".view-switcher button").forEach((b) => {
   b.addEventListener("click", () => {
@@ -953,12 +1118,17 @@ document.querySelectorAll(".view-switcher button").forEach((b) => {
 // ─── Touch swipe ──────────────────────────────────────────────────────────────
 
 let touchStartX = 0;
+let touchStartY = 0;
 document.addEventListener("touchstart", (e) => {
   touchStartX = e.changedTouches[0]?.screenX || 0;
+  touchStartY = e.changedTouches[0]?.screenY || 0;
 }, { passive: true });
 document.addEventListener("touchend", (e) => {
   if (!els.overlay.hidden) return;
   const dx = (e.changedTouches[0]?.screenX || 0) - touchStartX;
+  const dy = (e.changedTouches[0]?.screenY || 0) - touchStartY;
+  // Ігноруємо якщо вертикальний рух більший за горизонтальний (скрол)
+  if (Math.abs(dy) > Math.abs(dx)) return;
   if (Math.abs(dx) > 70) moveDay(dx < 0 ? 1 : -1);
 }, { passive: true });
 

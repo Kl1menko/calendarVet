@@ -61,3 +61,32 @@ create policy "authenticated can delete"
 
 -- 4. Enable Realtime for live updates across all doctors
 alter publication supabase_realtime add table appointments;
+
+-- 5. Notices table
+create table if not exists notices (
+  id          uuid primary key default gen_random_uuid(),
+  text        text not null,
+  created_by  uuid references auth.users(id),
+  created_at  timestamptz default now()
+);
+
+-- Enable Row Level Security
+alter table notices enable row level security;
+
+-- All authenticated users can read notices
+create policy "authenticated can read notices"
+  on notices for select
+  to authenticated
+  using (true);
+
+-- All authenticated users can insert notices
+create policy "authenticated can insert notices"
+  on notices for insert
+  to authenticated
+  with check (true);
+
+-- All authenticated users can delete notices
+create policy "authenticated can delete notices"
+  on notices for delete
+  to authenticated
+  using (true);

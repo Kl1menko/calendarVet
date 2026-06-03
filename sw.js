@@ -1,4 +1,4 @@
-const CACHE = "ultravet-v1";
+const CACHE = "ultravet-v2";
 const STATIC = [
   "/",
   "/index.html",
@@ -30,16 +30,24 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Для решти — спочатку кеш, потім мережа
-  e.respondWith(
-    caches.match(e.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(e.request).then((res) => {
-        if (!res || res.status !== 200 || res.type === "opaque") return res;
+  // CDN — кеш назавжди (версія зафіксована в URL)
+  if (e.request.url.includes("cdn.jsdelivr.net")) {
+    e.respondWith(
+      caches.match(e.request).then((cached) => cached || fetch(e.request).then((res) => {
         const clone = res.clone();
         caches.open(CACHE).then((cache) => cache.put(e.request, clone));
         return res;
-      });
-    })
+      }))
+    );
+    return;
+  }
+
+  // Локальні файли — спочатку мережа, кеш як fallback для offline
+  e.respondWith(
+    fetch(e.request).then((res) => {
+      const clone = res.clone();
+      caches.open(CACHE).then((cache) => cache.put(e.request, clone));
+      return res;
+    }).catch(() => caches.match(e.request))
   );
 });
